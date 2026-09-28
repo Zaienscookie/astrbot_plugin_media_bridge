@@ -1,0 +1,63 @@
+{
+  "proxy": {
+    "description": "代理设置（手动配置）",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "启用代理",
+        "type": "bool",
+        "default": true
+      },
+      "url": {
+        "description": "代理地址",
+        "type": "string",
+        "hint": "http://127.0.0.1:7890 或 socks5://host:port",
+        "default": "http://127.0.0.1:7890"
+      },
+      "youtube": {
+        "description": "YouTube 走代理",
+        "type": "bool",
+        "default": true
+      },
+      "bluesky": {
+        "description": "Bluesky 走代理",
+        "type": "bool",
+        "default": true
+      },
+      "twitter": {
+        "description": "Twitter 走代理",
+        "type": "bool",
+        "default": true
+      }
+    }
+  },
+  "quality": {
+    "description": "画质设置（能高清就高清）",
+    "type": "object",
+    "items": {
+      "youtube": {
+        "description": "YouTube 画质",
+        "type": "string",
+        "hint": "max=最高画质 / 720p / 1080p",
+        "default": "max"
+      },
+      "twitter": {
+        "description": "Twitter 媒体",
+        "type": "string",
+        "hint": "hd=高清 / orig=原图",
+        "default": "hd"
+      },
+      "bluesky": {
+        "description": "Bluesky 媒体",
+        "type": "string",
+        "hint": "fullsize=原图 / thumb=缩略图",
+        "default": "fullsize"
+      }
+    }
+  },
+  "max_video_mb": {
+    "description": "视频最大下载(MB)",
+    "type": "number",
+    "default": 50
+  }
+}
