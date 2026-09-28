@@ -57,7 +57,7 @@
   },
   "max_video_mb": {
     "description": "视频最大下载(MB)",
-    "type": "number",
-    "default": 50
+    "type": "float",
+    "default": 50.0
   }
 }
