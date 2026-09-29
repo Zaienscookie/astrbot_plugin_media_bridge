@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.0")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.1")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -268,6 +268,20 @@ class MediaBridgePlugin(Star):
             return None
 
     # ---------- Bluesky ----------
+    def _bsky_cdn(self, did: str, blob: dict, kind: str = "image") -> str:
+        """从 Bluesky blob 构造 CDN 直链"""
+        try:
+            cid = blob.get("ref", {}).get("$link", "")
+            mime = blob.get("mimeType", "image/jpeg")
+            ext = mime.split("/")[-1]
+            if ext == "jpeg":
+                ext = "jpeg"
+            if kind == "video":
+                return f"https://cdn.bsky.app/img/feed_fullsize/plain/{did}/{cid}@mp4"
+            return f"https://cdn.bsky.app/img/feed_fullsize/plain/{did}/{cid}@{ext}"
+        except Exception:
+            return ""
+
     @filter.regex(r"(https?://(?:bsky\.app|bsky\.social)/profile/[^\s]+)")
     async def on_bluesky(self, event: AstrMessageEvent):
         if not self._check_whitelist(event):
@@ -289,28 +303,50 @@ class MediaBridgePlugin(Star):
                         await event.send(event.plain_result("⚠️ Bluesky 用户解析失败"))
                         return
                     did = (await r.json()).get("did", "")
-                pu = f"https://public.api.bsky.app/xrpc/app.bsky.feed.getPost?repo={did}&rkey={rkey}"
+                if not did:
+                    await event.send(event.plain_result("⚠️ 未找到用户 DID"))
+                    return
+                uri = f"at://{did}/app.bsky.feed.post/{rkey}"
+                pu = f"https://public.api.bsky.app/xrpc/app.bsky.feed.getPosts?uris={urllib.parse.quote(uri)}"
                 async with s.get(pu, proxy=proxy, headers=self.headers, timeout=aiohttp.ClientTimeout(total=15)) as r2:
                     if r2.status != 200:
-                        await event.send(event.plain_result("⚠️ Bluesky 帖子获取失败"))
+                        await event.send(event.plain_result(f"⚠️ Bluesky 帖子获取失败({r2.status})"))
                         return
-                    post = await r2.json()
-            record = post.get("post", {}).get("record", {})
-            text = (record.get("text") or "")[:100]
-            embed = record.get("embed", {}) or {}
-            media = []
+                    posts = (await r2.json()).get("posts", [])
+            if not posts:
+                await event.send(event.plain_result("⚠️ Bluesky 帖子不存在"))
+                return
+            rec = posts[0].get("record", {})
+            text = (rec.get("text") or "")[:120]
+            embed = rec.get("embed", {}) or {}
             et = embed.get("$type", "")
+            media = []
             if et == "app.bsky.embed.images":
                 for img in embed.get("images", []):
-                    media.append({"url": img.get("fullsize") or img.get("thumb"), "type": "image"})
+                    u = self._bsky_cdn(did, img.get("image", {}), "image")
+                    if u:
+                        media.append({"url": u, "type": "image"})
             elif et == "app.bsky.embed.video":
-                media.append({"url": embed.get("video", ""), "type": "video"})
+                u = self._bsky_cdn(did, embed.get("video", {}), "video")
+                if u:
+                    media.append({"url": u, "type": "video"})
             elif et == "app.bsky.embed.external":
-                media.append({"url": (embed.get("external") or {}).get("uri", ""), "type": ""})
+                ext = (embed.get("external") or {})
+                eu = ext.get("uri", "")
+                if eu:
+                    media.append({"url": eu, "type": ""})
+            # recordWithMedia (带媒体)
+            elif et == "app.bsky.embed.recordWithMedia":
+                m2 = embed.get("media", {}) or {}
+                if m2.get("$type") == "app.bsky.embed.images":
+                    for img in m2.get("images", []):
+                        u = self._bsky_cdn(did, img.get("image", {}), "image")
+                        if u:
+                            media.append({"url": u, "type": "image"})
             if media:
                 await self._send_media(event, media, proxy, text=f"📘 {text}")
             else:
-                await event.send(event.plain_result(f"📘 {text}"))
+                await event.send(event.plain_result(f"📘 {text}" if text else "📘 (无媒体内容)"))
         except Exception as e:
             await event.send(event.plain_result(f"❌ Bluesky 处理错误: {str(e)[:80]}"))
 

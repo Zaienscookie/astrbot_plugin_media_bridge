@@ -32,7 +32,7 @@ AstrBot 媒体解析插件：**解析并下载** YouTube / Bluesky / Twitter(X) 
 ## 🎬 视频发送说明
 QQ 发送**无音轨**视频会超时。插件发送视频前会用 **ffmpeg 转码**为标准 mp4（H.264+AAC+faststart），无音轨时自动添加静音音轨。
 
-**依赖**：`ffmpeg`（`apt install ffmpeg`）
+**依赖**：`ffmpeg`（`apt install ffmpeg`）+ `deno`（yt-dlp 解析 YouTube 需要 JS runtime）
 
 ## 📦 依赖
 - `aiohttp`（AstrBot 自带）
