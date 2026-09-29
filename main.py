@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理、画质、白名单", "1.4.0")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理、画质、白名单", "1.4.1")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -159,7 +159,7 @@ class MediaBridgePlugin(Star):
             return ""
 
     async def _iter_media(self, urls: list, proxy: str, text: str = ""):
-        """下载所有媒体；图片合并为一条消息，视频逐个发送"""
+        """下载所有媒体；文字、每张图、每个视频 都单独 yield（逐条发送，避免 napcat 多图问题）"""
         images = []
         videos = []
         tmp = []
@@ -183,18 +183,14 @@ class MediaBridgePlugin(Star):
                     images.append(Image.fromFileSystem(p))
             except Exception as e:
                 logger.warning(f"[media_bridge] 构建媒体失败: {str(e)[:80]}")
-        logger.info(f"[media_bridge] 图片 {len(images)} 张, 视频 {len(videos)} 个")
-        # 图片+文字：合并为一条消息
-        chain = []
+        logger.info(f"[media_bridge] 图片 {len(images)} 张, 视频 {len(videos)} 个, 文字 {bool(text)}")
         if text:
-            chain.append(Plain(text))
-        chain.extend(images)
-        if chain:
-            yield self._chain(chain)
-        # 视频逐个
+            yield self._plain(text)
+        for im in images:
+            yield self._chain([im])
         for v in videos:
             yield self._chain([v])
-        if not chain and not videos and text:
+        if not images and not videos and text:
             yield self._plain("⚠️ 媒体下载失败(可能超限或代理异常)")
         for t in tmp:
             try:
