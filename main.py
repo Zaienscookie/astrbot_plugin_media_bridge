@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.1")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.2")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -28,6 +28,8 @@ class MediaBridgePlugin(Star):
         self.proxy_url = self.proxy_cfg.get("url", "http://127.0.0.1:7890")
         self.proxy_enabled = self.proxy_cfg.get("enabled", True)
         self.max_video_mb = float((self.config or {}).get("max_video_mb", 50))
+        self.cache_seconds = int((self.config or {}).get("cache_seconds", 300))
+        self._cache = {}  # url -> (local_path, timestamp)
         self.tmp_dir = os.path.join(tempfile.gettempdir(), "media_bridge")
         os.makedirs(self.tmp_dir, exist_ok=True)
         self.headers = {
@@ -35,6 +37,19 @@ class MediaBridgePlugin(Star):
         }
 
     # ---------- 工具 ----------
+    def _clean_cache(self):
+        """清理过期缓存"""
+        import time as _t
+        now = _t.time()
+        expired = [u for u, (p, ts) in self._cache.items() if now - ts >= self.cache_seconds]
+        for u in expired:
+            p, _ = self._cache.pop(u)
+            try:
+                if os.path.exists(p):
+                    os.remove(p)
+            except Exception:
+                pass
+
     def _proxy_for(self, platform: str):
         if not self.proxy_enabled:
             return None
@@ -80,7 +95,14 @@ class MediaBridgePlugin(Star):
         return self.quality_cfg.get(platform, "max")
 
     async def _download(self, url: str, proxy: str = None, ext_hint: str = "", type_hint: str = "") -> str | None:
-        """下载媒体到本地，返回路径；超限/失败返回 None"""
+        """下载媒体到本地，返回路径；超限/失败返回 None。命中缓存则复用。"""
+        import time as _t
+        # 缓存命中检查
+        if url in self._cache:
+            p, ts = self._cache[url]
+            if _t.time() - ts < self.cache_seconds and os.path.exists(p):
+                logger.info(f"[media_bridge] 缓存命中: {url[:60]}")
+                return p
         try:
             timeout = aiohttp.ClientTimeout(total=180)
             async with aiohttp.ClientSession(timeout=timeout) as s:
@@ -127,6 +149,8 @@ class MediaBridgePlugin(Star):
                                 logger.warning("[media_bridge] 下载超限中断")
                                 return None
                             f.write(chunk)
+                    self._cache[url] = (fname, _t.time())
+                    self._clean_cache()
                     return fname
         except Exception as e:
             logger.warning(f"[media_bridge] 下载异常: {str(e)[:100]}")
@@ -199,10 +223,7 @@ class MediaBridgePlugin(Star):
             except Exception as e:
                 logger.warning(f"[media_bridge] 发送失败: {str(e)[:80]}")
             finally:
-                try:
-                    os.remove(p)
-                except Exception:
-                    pass
+                pass  # 文件保留在缓存中，由 cache_seconds 控制过期清理
         if sent == 0 and text:
             await event.send(event.plain_result("⚠️ 媒体下载失败(可能超限或代理异常)"))
 
@@ -376,6 +397,11 @@ class MediaBridgePlugin(Star):
             author = t.get("author", {}).get("screen_name", user)
             text = (t.get("text") or "")[:120]
             medias = t.get("media", {}).get("all", [])
+            # 引用转推：外层无媒体时读取被引用推文的媒体
+            if not medias:
+                q = t.get("quote")
+                if isinstance(q, dict):
+                    medias = (q.get("media", {}) or {}).get("all", [])
             urls = [{"url": mm.get("url", ""), "type": mm.get("type", "")} for mm in medias if mm.get("url")]
             if urls:
                 await self._send_media(event, urls, proxy, text=f"🐦 @{author}: {text}")

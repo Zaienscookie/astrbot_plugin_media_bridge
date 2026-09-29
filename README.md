@@ -18,6 +18,10 @@ AstrBot 媒体解析插件：**解析并下载** YouTube / Bluesky / Twitter(X) 
 | **proxy.enabled / url** | 代理开关 + 地址（默认 `http://127.0.0.1:7890`）|
 | **quality** | 画质（YouTube: max；Twitter: hd/orig；Bluesky: fullsize）|
 | **max_video_mb** | 视频最大下载大小（默认 50MB）|
+| **cache_seconds** | 媒体缓存时间（秒，默认 300），缓存期内相同链接复用本地文件 |
+
+## 🎬 引用转推
+Twitter 引用转推（quote）的媒体会被自动读取（外层无媒体时取被引用推文的媒体）。
 
 ## 🔒 白名单逻辑
 - 未开启：所有人都能用

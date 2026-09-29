@@ -82,5 +82,11 @@
     "description": "视频最大下载(MB)",
     "type": "float",
     "default": 50.0
+  },
+  "cache_seconds": {
+    "description": "视频/媒体缓存时间(秒)",
+    "type": "int",
+    "hint": "缓存期内相同链接复用本地文件，默认300秒",
+    "default": 300
   }
 }
