@@ -10,7 +10,7 @@ import aiohttp
 from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, register
 from astrbot.api import logger
-from astrbot.api.message_components import Image, Video, Plain
+from astrbot.api.message_components import Image, Video, Plain, File
 
 try:
     from astrbot.core import AstrBotConfig
@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.3")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.4")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -191,11 +191,25 @@ class MediaBridgePlugin(Star):
             logger.warning(f"[media_bridge] 转码异常: {str(e)[:100]}")
             return None
 
+    async def _make_cover(self, video_path: str):
+        """用 ffmpeg 从视频第一帧生成封面（QQ 发视频常需封面）"""
+        try:
+            cover = os.path.join(self.tmp_dir, f"cv_{uuid.uuid4().hex}.jpg")
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-y", "-i", video_path, "-ss", "0", "-vframes", "1", cover,
+                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=30)
+            return cover if os.path.exists(cover) else None
+        except Exception:
+            return None
+
     async def _send_media(self, event, urls: list, proxy: str, text: str = ""):
-        """下载并发送媒体。多图/多视频/混合 全部下载后合并为一条消息链发送。"""
+        """下载并发送媒体：图片合并发送；视频逐个发送，失败降级为文件发送。"""
         if text:
             await event.send(event.plain_result(text))
-        comps = []
+        images = []
+        videos = []
         tmp_transcoded = []
         for item in urls:
             if isinstance(item, dict):
@@ -213,16 +227,45 @@ class MediaBridgePlugin(Star):
                 if self._is_video(p):
                     tpath = await self._transcode_video(p)
                     sp = tpath or p
-                    comps.append(Video.fromFileSystem(sp))
+                    cover = await self._make_cover(sp)
+                    if cover:
+                        try:
+                            vv = Video.fromFileSystem(sp)
+                            vv.cover = cover
+                            videos.append((vv, sp))
+                        except Exception:
+                            videos.append((Video.fromFileSystem(sp), sp))
+                        tmp_transcoded.append(cover)
+                    else:
+                        videos.append((Video.fromFileSystem(sp), sp))
                     if tpath:
                         tmp_transcoded.append(tpath)
                 else:
-                    comps.append(Image.fromFileSystem(p))
+                    images.append(Image.fromFileSystem(p))
             except Exception as e:
                 logger.warning(f"[media_bridge] 构建媒体组件失败: {str(e)[:80]}")
-        if comps:
-            await event.send(event.chain_result(comps))
-        elif text:
+        # 图片：合并为一条消息
+        if images:
+            try:
+                await event.send(event.chain_result(images))
+            except Exception as e:
+                logger.warning(f"[media_bridge] 图片合并发送失败: {str(e)[:60]}, 逐个重试")
+                for im in images:
+                    try:
+                        await event.send(event.chain_result([im]))
+                    except Exception:
+                        pass
+        # 视频：逐个发送，失败降级为文件
+        for v, sp in videos:
+            try:
+                await event.send(event.chain_result([v]))
+            except Exception as e:
+                logger.warning(f"[media_bridge] 视频发送失败({str(e)[:50]}), 降级为文件")
+                try:
+                    await event.send(event.chain_result([File(file=sp, name=os.path.basename(sp))]))
+                except Exception as e2:
+                    logger.warning(f"[media_bridge] 文件发送也失败: {str(e2)[:50]}")
+        if not images and not videos and text:
             await event.send(event.plain_result("⚠️ 媒体下载失败(可能超限或代理异常)"))
         # 清理转码临时文件（原视频保留在缓存）
         for t in tmp_transcoded:
