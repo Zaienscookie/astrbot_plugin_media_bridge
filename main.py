@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.2.1")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.0")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -135,6 +135,38 @@ class MediaBridgePlugin(Star):
     def _is_video(self, path: str):
         return os.path.splitext(path)[1].lower() in (".mp4", ".mov", ".m4v", ".webm", ".mkv")
 
+    async def _transcode_video(self, path: str):
+        """用 ffmpeg 转码为标准 mp4(H.264+AAC+faststart)，无音轨则加静音音轨，解决 QQ 发视频超时"""
+        try:
+            # 检测音轨
+            probe = await asyncio.create_subprocess_exec(
+                "ffprobe", "-v", "error", "-select_streams", "a",
+                "-show_entries", "stream=index", "-of", "csv=p=0", path,
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL
+            )
+            aout, _ = await probe.communicate()
+            has_audio = bool(aout.strip())
+            out = os.path.join(self.tmp_dir, f"tc_{uuid.uuid4().hex}.mp4")
+            cmd = ["ffmpeg", "-y", "-i", path]
+            if not has_audio:
+                cmd += ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo", "-map", "0:v:0", "-map", "1:a:0"]
+            cmd += ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+                    "-c:a", "aac", "-b:a", "128k"]
+            if not has_audio:
+                cmd += ["-shortest"]
+            cmd += ["-movflags", "+faststart", out]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE
+            )
+            _, err = await asyncio.wait_for(proc.communicate(), timeout=180)
+            if proc.returncode == 0 and os.path.exists(out):
+                return out
+            logger.warning(f"[media_bridge] 转码失败: {err.decode(errors='ignore')[:120]}")
+            return None
+        except Exception as e:
+            logger.warning(f"[media_bridge] 转码异常: {str(e)[:100]}")
+            return None
+
     async def _send_media(self, event, urls: list, proxy: str, text: str = ""):
         """下载并发送媒体列表。urls 元素可为 str 或 {"url":..,"type":..}"""
         if text:
@@ -154,7 +186,13 @@ class MediaBridgePlugin(Star):
                 continue
             try:
                 if self._is_video(p):
-                    await event.send(event.chain_result([Video.fromFileSystem(p)]))
+                    # 转码为标准 mp4(带音轨)，解决 QQ 发视频超时
+                    tpath = await self._transcode_video(p)
+                    sp = tpath or p
+                    await event.send(event.chain_result([Video.fromFileSystem(sp)]))
+                    if tpath and os.path.exists(tpath):
+                        try: os.remove(tpath)
+                        except Exception: pass
                 else:
                     await event.send(event.chain_result([Image.fromFileSystem(p)]))
                 sent += 1
