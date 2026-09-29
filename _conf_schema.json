@@ -1,4 +1,27 @@
 {
+  "whitelist": {
+    "description": "白名单（开启后仅白名单群/用户可用）",
+    "type": "object",
+    "items": {
+      "enabled": {
+        "description": "启用白名单",
+        "type": "bool",
+        "default": false
+      },
+      "groups": {
+        "description": "白名单群号",
+        "type": "string",
+        "hint": "多个用逗号分隔，如: 123456,789012",
+        "default": ""
+      },
+      "users": {
+        "description": "白名单用户QQ",
+        "type": "string",
+        "hint": "多个用逗号分隔，如: 891584823",
+        "default": ""
+      }
+    }
+  },
   "proxy": {
     "description": "代理设置（手动配置）",
     "type": "object",
@@ -38,19 +61,19 @@
       "youtube": {
         "description": "YouTube 画质",
         "type": "string",
-        "hint": "max=最高画质 / 720p / 1080p",
+        "hint": "max/720p/1080p",
         "default": "max"
       },
       "twitter": {
         "description": "Twitter 媒体",
         "type": "string",
-        "hint": "hd=高清 / orig=原图",
+        "hint": "hd/orig",
         "default": "hd"
       },
       "bluesky": {
         "description": "Bluesky 媒体",
         "type": "string",
-        "hint": "fullsize=原图 / thumb=缩略图",
+        "hint": "fullsize/thumb",
         "default": "fullsize"
       }
     }

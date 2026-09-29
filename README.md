@@ -1,25 +1,34 @@
 # astrbot_plugin_media_bridge
 
-AstrBot 媒体解析插件：解析 **YouTube / Bluesky / Twitter(X) / GIF / 图片** 媒体链接，返回直链。支持**手动配置代理**（如本地 clash docker）与**画质选择**。
+AstrBot 媒体解析插件：**解析并下载** YouTube / Bluesky / Twitter(X) / GIF / 图片，**直接发送媒体**（视频/图片）。支持**手动配置代理**、**画质选择**、**群/用户白名单**。
 
-## 功能
-- 🎬 **YouTube**：标题/作者/直链（oEmbed API）
-- 📘 **Bluesky**：帖子文字 + 图片/外部链接（官方 API）
-- 🐦 **Twitter/X**：多级 fallback（fxtwitter → syndication → OG抓取）
-- 🖼️ **GIF/图片**：直接返回原图链接
+## ✨ 功能
+- 🎬 **YouTube**：yt-dlp 下载最高画质视频并发视频
+- 📘 **Bluesky**：API 解析 → 下载图片 → 发图片
+- 🐦 **Twitter/X**：fxtwitter 解析 → 下载 mp4/图片 → 发媒体
+- 🖼️ **GIF/图片**：下载后直接发
+- 🔒 **白名单**：开启后仅指定群/用户可用
 
-## 配置（_conf_schema.json）
-- **proxy**：代理地址（默认 `http://127.0.0.1:7890`，可指向本地 clash），按平台开关
-- **quality**：画质（YouTube: max/720p/1080p，Twitter: hd/orig，Bluesky: fullsize/thumb）——能高清就高清
-- **max_video_mb**：视频最大大小
+## ⚙️ 配置
+| 项 | 说明 |
+|---|---|
+| **whitelist.enabled** | 启用白名单 |
+| **whitelist.groups** | 白名单群号（逗号分隔）|
+| **whitelist.users** | 白名单用户 QQ（逗号分隔）|
+| **proxy.enabled / url** | 代理开关 + 地址（默认 `http://127.0.0.1:7890`）|
+| **quality** | 画质（YouTube: max；Twitter: hd/orig；Bluesky: fullsize）|
+| **max_video_mb** | 视频最大下载大小（默认 50MB）|
 
-## 代理说明
-本机无公网直连国外媒体平台时，需配置代理。示例（clash docker）：
-```
-http://127.0.0.1:7890
-```
+## 🔒 白名单逻辑
+- 未开启：所有人都能用
+- 已开启：群号在白名单 或 用户 QQ 在白名单 才可用
+- 白名单列表为空：视为全部允许（防误锁）
 
-## 安装
-1. 下载插件目录放入 `data/plugins/`
-2. 重启 AstrBot（或重载插件）
-3. 在 AstrBot 管理面板配置代理/画质
+## 🚀 安装
+1. 插件目录放入 `data/plugins/`
+2. 重启/重载 AstrBot
+3. 面板配置代理/画质/白名单
+
+## 📦 依赖
+- `aiohttp`（AstrBot 自带）
+- `yt-dlp`（YouTube 视频下载需要）
