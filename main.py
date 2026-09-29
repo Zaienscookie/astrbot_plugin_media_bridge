@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.1.0")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.2.1")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -79,7 +79,7 @@ class MediaBridgePlugin(Star):
     def _quality(self, platform: str):
         return self.quality_cfg.get(platform, "max")
 
-    async def _download(self, url: str, proxy: str = None, ext_hint: str = "") -> str | None:
+    async def _download(self, url: str, proxy: str = None, ext_hint: str = "", type_hint: str = "") -> str | None:
         """下载媒体到本地，返回路径；超限/失败返回 None"""
         try:
             timeout = aiohttp.ClientTimeout(total=180)
@@ -93,8 +93,14 @@ class MediaBridgePlugin(Star):
                     if clen and int(clen) > self.max_video_mb * 1024 * 1024:
                         logger.warning(f"[media_bridge] 文件超限 {int(clen)//1048576}MB > {self.max_video_mb}MB")
                         return None
-                    # 扩展名
+                    # 扩展名（优先 type_hint: photo/image/video/gif）
                     ext = ext_hint
+                    if not ext and type_hint:
+                        th = type_hint.lower()
+                        if th in ("video", "gif"):  # Twitter的gif实为mp4
+                            ext = ".mp4"
+                        elif th in ("photo", "image"):
+                            ext = ".jpg"
                     if not ext:
                         ct = resp.headers.get("Content-Type", "")
                         if "mp4" in ct or "video" in ct:
@@ -130,14 +136,20 @@ class MediaBridgePlugin(Star):
         return os.path.splitext(path)[1].lower() in (".mp4", ".mov", ".m4v", ".webm", ".mkv")
 
     async def _send_media(self, event, urls: list, proxy: str, text: str = ""):
-        """下载并发送媒体列表"""
+        """下载并发送媒体列表。urls 元素可为 str 或 {"url":..,"type":..}"""
         if text:
             await event.send(event.plain_result(text))
         sent = 0
-        for u in urls:
+        for item in urls:
+            if isinstance(item, dict):
+                u = item.get("url", "")
+                th = item.get("type", "")
+            else:
+                u = item
+                th = ""
             if not u:
                 continue
-            p = await self._download(u, proxy=proxy)
+            p = await self._download(u, proxy=proxy, type_hint=th)
             if not p:
                 continue
             try:
@@ -252,11 +264,11 @@ class MediaBridgePlugin(Star):
             et = embed.get("$type", "")
             if et == "app.bsky.embed.images":
                 for img in embed.get("images", []):
-                    media.append(img.get("fullsize") or img.get("thumb"))
+                    media.append({"url": img.get("fullsize") or img.get("thumb"), "type": "image"})
             elif et == "app.bsky.embed.video":
-                media.append(embed.get("video", ""))
+                media.append({"url": embed.get("video", ""), "type": "video"})
             elif et == "app.bsky.embed.external":
-                media.append((embed.get("external") or {}).get("uri", ""))
+                media.append({"url": (embed.get("external") or {}).get("uri", ""), "type": ""})
             if media:
                 await self._send_media(event, media, proxy, text=f"📘 {text}")
             else:
@@ -290,7 +302,7 @@ class MediaBridgePlugin(Star):
             author = t.get("author", {}).get("screen_name", user)
             text = (t.get("text") or "")[:120]
             medias = t.get("media", {}).get("all", [])
-            urls = [mm.get("url", "") for mm in medias if mm.get("url")]
+            urls = [{"url": mm.get("url", ""), "type": mm.get("type", "")} for mm in medias if mm.get("url")]
             if urls:
                 await self._send_media(event, urls, proxy, text=f"🐦 @{author}: {text}")
             else:
