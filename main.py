@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.5")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.6")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -244,13 +244,18 @@ class MediaBridgePlugin(Star):
                     images.append(Image.fromFileSystem(p))
             except Exception as e:
                 logger.warning(f"[media_bridge] 构建媒体组件失败: {str(e)[:80]}")
-        # 图片：逐个发送（避免合并丢图）
-        for im in images:
+        # 图片：合并为一条消息发送（一条信息包含所有图）
+        if images:
             try:
-                await event.send(event.chain_result([im]))
-                await asyncio.sleep(0.5)  # 间隔，避免发送过快丢图
+                await event.send(event.chain_result(images))
             except Exception as e:
-                logger.warning(f"[media_bridge] 图片发送失败: {str(e)[:60]}")
+                logger.warning(f"[media_bridge] 图片合并发送失败, 逐个重试: {str(e)[:60]}")
+                for im in images:
+                    try:
+                        await event.send(event.chain_result([im]))
+                        await asyncio.sleep(0.3)
+                    except Exception:
+                        pass
         # 视频：逐个发送，失败降级为文件
         for v, sp in videos:
             try:
@@ -445,7 +450,15 @@ class MediaBridgePlugin(Star):
             q = t.get("quote")
             if isinstance(q, dict):
                 medias += list((q.get("media", {}) or {}).get("all", []))
-            urls = [{"url": mm.get("url", ""), "type": mm.get("type", "")} for mm in medias if mm.get("url")]
+            urls = []
+            for mm in medias:
+                mu = mm.get("url") or mm.get("media_url_https") or mm.get("thumbnail_url") or ""
+                if not mu:
+                    continue
+                # 高清：小图/中图替换为 large
+                mu = mu.replace("name=small", "name=large").replace("name=medium", "name=large")
+                urls.append({"url": mu, "type": mm.get("type", "")})
+            logger.info(f"[media_bridge] Twitter 解析到 {len(urls)} 个媒体")
             if urls:
                 await self._send_media(event, urls, proxy, text=f"🐦 @{author}: {text}")
             else:
