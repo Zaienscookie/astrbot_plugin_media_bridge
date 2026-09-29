@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.7")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.8")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -244,18 +244,15 @@ class MediaBridgePlugin(Star):
                     images.append(Image.fromFileSystem(p))
             except Exception as e:
                 logger.warning(f"[media_bridge] 构建媒体组件失败: {str(e)[:80]}")
-        # 图片：合并为一条消息发送（一条信息包含所有图）
-        if images:
+        # 图片：逐个发送（合并发送在 napcat 下会丢图，改为逐个）
+        for idx, im in enumerate(images):
             try:
-                await event.send(event.chain_result(images))
+                await event.send(event.chain_result([im]))
+                logger.info(f"[media_bridge] 图片 {idx+1}/{len(images)} 已发送")
+                if idx < len(images) - 1:
+                    await asyncio.sleep(0.8)
             except Exception as e:
-                logger.warning(f"[media_bridge] 图片合并发送失败, 逐个重试: {str(e)[:60]}")
-                for im in images:
-                    try:
-                        await event.send(event.chain_result([im]))
-                        await asyncio.sleep(0.3)
-                    except Exception:
-                        pass
+                logger.warning(f"[media_bridge] 图片 {idx+1} 发送失败: {str(e)[:60]}")
         # 视频：逐个发送，失败降级为文件
         for v, sp in videos:
             try:
