@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.6")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.7")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -456,7 +456,7 @@ class MediaBridgePlugin(Star):
                 if not mu:
                     continue
                 # 高清：小图/中图替换为 large
-                mu = mu.replace("name=small", "name=large").replace("name=medium", "name=large")
+                mu = mu.replace("name=small", "name=large").replace("name=medium", "name=large").replace("name=orig", "name=large")
                 urls.append({"url": mu, "type": mm.get("type", "")})
             logger.info(f"[media_bridge] Twitter 解析到 {len(urls)} 个媒体")
             if urls:

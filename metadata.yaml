@@ -1,7 +1,7 @@
 name: astrbot_plugin_media_bridge
 display_name: 媒体直链解析
 desc: 解析 YouTube / Bluesky / Twitter / 通用 GIF 图片媒体直链，支持代理与画质配置
-version: v1.3.6
+version: v1.3.7
 author: zaiens
 repo: https://github.com/Zaienscookie
 tags:
