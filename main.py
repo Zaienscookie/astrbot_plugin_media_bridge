@@ -18,7 +18,7 @@ except Exception:
     AstrBotConfig = dict
 
 
-@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.2")
+@register("media_bridge", "zaiens", "解析并下载 YouTube/Bluesky/Twitter/GIF/图片媒体，支持代理与画质", "1.3.3")
 class MediaBridgePlugin(Star):
     def __init__(self, context: Context, config=None):
         super().__init__(context)
@@ -192,10 +192,11 @@ class MediaBridgePlugin(Star):
             return None
 
     async def _send_media(self, event, urls: list, proxy: str, text: str = ""):
-        """下载并发送媒体列表。urls 元素可为 str 或 {"url":..,"type":..}"""
+        """下载并发送媒体。多图/多视频/混合 全部下载后合并为一条消息链发送。"""
         if text:
             await event.send(event.plain_result(text))
-        sent = 0
+        comps = []
+        tmp_transcoded = []
         for item in urls:
             if isinstance(item, dict):
                 u = item.get("url", "")
@@ -210,22 +211,26 @@ class MediaBridgePlugin(Star):
                 continue
             try:
                 if self._is_video(p):
-                    # 转码为标准 mp4(带音轨)，解决 QQ 发视频超时
                     tpath = await self._transcode_video(p)
                     sp = tpath or p
-                    await event.send(event.chain_result([Video.fromFileSystem(sp)]))
-                    if tpath and os.path.exists(tpath):
-                        try: os.remove(tpath)
-                        except Exception: pass
+                    comps.append(Video.fromFileSystem(sp))
+                    if tpath:
+                        tmp_transcoded.append(tpath)
                 else:
-                    await event.send(event.chain_result([Image.fromFileSystem(p)]))
-                sent += 1
+                    comps.append(Image.fromFileSystem(p))
             except Exception as e:
-                logger.warning(f"[media_bridge] 发送失败: {str(e)[:80]}")
-            finally:
-                pass  # 文件保留在缓存中，由 cache_seconds 控制过期清理
-        if sent == 0 and text:
+                logger.warning(f"[media_bridge] 构建媒体组件失败: {str(e)[:80]}")
+        if comps:
+            await event.send(event.chain_result(comps))
+        elif text:
             await event.send(event.plain_result("⚠️ 媒体下载失败(可能超限或代理异常)"))
+        # 清理转码临时文件（原视频保留在缓存）
+        for t in tmp_transcoded:
+            try:
+                if t and os.path.exists(t):
+                    os.remove(t)
+            except Exception:
+                pass
 
     # ---------- YouTube ----------
     @filter.regex(r"(https?://(?:www\.)?(?:youtube\.com|youtu\.be)/[^\s]+)")
@@ -396,12 +401,11 @@ class MediaBridgePlugin(Star):
             t = d.get("tweet", {})
             author = t.get("author", {}).get("screen_name", user)
             text = (t.get("text") or "")[:120]
-            medias = t.get("media", {}).get("all", [])
-            # 引用转推：外层无媒体时读取被引用推文的媒体
-            if not medias:
-                q = t.get("quote")
-                if isinstance(q, dict):
-                    medias = (q.get("media", {}) or {}).get("all", [])
+            medias = list(t.get("media", {}).get("all", []))
+            # 引用转推：合并被引用推文的媒体（外层+引用都发）
+            q = t.get("quote")
+            if isinstance(q, dict):
+                medias += list((q.get("media", {}) or {}).get("all", []))
             urls = [{"url": mm.get("url", ""), "type": mm.get("type", "")} for mm in medias if mm.get("url")]
             if urls:
                 await self._send_media(event, urls, proxy, text=f"🐦 @{author}: {text}")
