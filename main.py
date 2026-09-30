@@ -228,7 +228,7 @@ class MediaBridgePlugin(Star):
             title = d.get("title", ""); author = d.get("author_name", ""); thumb = d.get("thumbnail_url", "")
             path = await self._ytdlp_download(url, proxy)
             if path:
-                yield self._plain(f"🎬 {title} — {author}")
+                yield self._plain(f"YouTube {title} — {author}")
                 yield self._chain([Video.fromFileSystem(path)])
                 try: os.remove(path)
                 except Exception: pass
@@ -237,7 +237,7 @@ class MediaBridgePlugin(Star):
                     p = await self._download(thumb, proxy=proxy)
                     if p:
                         yield self._chain([Image.fromFileSystem(p)])
-                yield self._plain(f"🎬 {title} — {author}")
+                yield self._plain(f"YouTube {title} — {author}")
         except Exception as e:
             yield self._plain(f"❌ YouTube 处理错误: {str(e)[:80]}")
 
@@ -313,10 +313,10 @@ class MediaBridgePlugin(Star):
                         u = self._bsky_cdn(did, img.get("image", {}), "image")
                         if u: media.append({"url": u, "type": "image"})
             if media:
-                async for r in self._iter_media(media, proxy, f"📘 {text}"):
+                async for r in self._iter_media(media, proxy, f"Bluesky {text}"):
                     yield r
             else:
-                yield self._plain(f"📘 {text}" if text else "📘 (无媒体内容)")
+                yield self._plain(f"Bluesky {text}" if text else "Bluesky (无媒体内容)")
         except Exception as e:
             yield self._plain(f"❌ Bluesky 处理错误: {str(e)[:80]}")
 
@@ -356,10 +356,10 @@ class MediaBridgePlugin(Star):
                 urls.append({"url": mu, "type": mm.get("type", "")})
             logger.info(f"[media_bridge] Twitter 解析到 {len(urls)} 个媒体")
             if urls:
-                async for r in self._iter_media(urls, proxy, f"🐦 @{author}: {text}"):
+                async for r in self._iter_media(urls, proxy, f"X @{author}: {text}"):
                     yield r
             else:
-                yield self._plain(f"🐦 @{author}: {text}")
+                yield self._plain(f"X @{author}: {text}")
         except Exception as e:
             yield self._plain(f"❌ Twitter 处理错误: {str(e)[:80]}")
 
